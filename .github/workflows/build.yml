@@ -13,15 +13,17 @@ jobs:
       build_ver: 1.0.0
     steps:
     - uses: actions/checkout@v4
-    - run: mkdir build && cd Orbit
+    - run: mkdir build
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 9.0
     - name: Restore dependencies
       run: dotnet restore
+      working-directory: Orbit
     - name: Build
       run: dotnet build --configuration Release --no-restore '/p:SptRoot=../build'
+      working-directory: Orbit
     # - name: Compress result
     #  run: zip -r ../ORBIT-{{ env.build_ver }}-rc.zip ./build/*
     - name: Upload Build Artifact
