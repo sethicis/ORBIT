@@ -9,8 +9,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      build_ver: 1.0.0
     steps:
     - uses: actions/checkout@v4
+    - run: mkdir build
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
@@ -18,9 +21,11 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
-      run: dotnet build --configuration Release --no-restore
+      run: dotnet build --configuration Release --no-restore '/p:SptRoot=build'
+    # - name: Compress result
+    #  run: zip -r ../ORBIT-{{ env.build_ver }}-rc.zip ./build/*
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v2
       with:
         name: Application_Artifact
-        path: release/
+        path: build/
