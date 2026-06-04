@@ -1,33 +1,83 @@
-# This workflow will build a .NET project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
-
 name: Build Mod
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     env:
       build_ver: 1.0.0
+      SPT_ROOT: ${{ github.workspace }}\build
+      FIKA_REF_BASE: https://raw.githubusercontent.com/project-fika/Fika-Plugin/02c0de7ad77c1a46436f4189e7e369dc88312fdd/References
+      SPT_BUILD_BASE: https://raw.githubusercontent.com/sp-tarkov/build/b20a75e1dd7dbd8bd673f9bf9d9f50f4f085ff43/static-assets-csharp/BepInEx/core
+      SPT_MODULES_BASE: https://raw.githubusercontent.com/sp-tarkov/modules/b0ff10d0e3d9636a53ed9bb8c61afd9e2ce62871/project/Shared/Hollowed
+      BIGBRAIN_DLL_URL: https://github.com/DrakiaXYZ/SPT-BigBrain/releases/download/1.4.0/DrakiaXYZ-BigBrain-Debug.dll
+
     steps:
-    - uses: actions/checkout@v4
-    - run: mkdir build
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 9.0
-    - name: Restore dependencies
-      run: dotnet restore
-      working-directory: Orbit
-    - name: Build
-      run: dotnet build --configuration Release --no-restore '/p:SptRoot=../build'
-      working-directory: Orbit
-    # - name: Compress result
-    #  run: zip -r ../ORBIT-{{ env.build_ver }}-rc.zip ./build/*
-    - name: Upload Build Artifact
-      uses: actions/upload-artifact@v7
-      with:
-        name: Application_Artifact
-        path: build/
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Prepare SPT reference layout
+        shell: pwsh
+        run: |
+          $managedDir = Join-Path $env:SPT_ROOT 'EscapeFromTarkov_Data\Managed'
+          $bepInExCoreDir = Join-Path $env:SPT_ROOT 'BepInEx\core'
+          $bepInExPluginsDir = Join-Path $env:SPT_ROOT 'BepInEx\plugins'
+          $sptPluginDir = Join-Path $bepInExPluginsDir 'spt'
+
+          New-Item -ItemType Directory -Force -Path $managedDir, $bepInExCoreDir, $bepInExPluginsDir, $sptPluginDir | Out-Null
+
+          function Get-Ref([string]$Url, [string]$Destination) {
+            Invoke-WebRequest -Uri $Url -OutFile $Destination
+          }
+
+          Get-Ref "$env:SPT_MODULES_BASE/hollowed.dll" (Join-Path $managedDir 'Assembly-CSharp.dll')
+
+          Get-Ref "$env:SPT_BUILD_BASE/0Harmony.dll" (Join-Path $bepInExCoreDir '0Harmony.dll')
+          Get-Ref "$env:SPT_BUILD_BASE/BepInEx.dll" (Join-Path $bepInExCoreDir 'BepInEx.dll')
+
+          Get-Ref "$env:FIKA_REF_BASE/Comfort.dll" (Join-Path $managedDir 'Comfort.dll')
+          Get-Ref "$env:FIKA_REF_BASE/ItemComponent.Types.dll" (Join-Path $managedDir 'ItemComponent.Types.dll')
+          Get-Ref "$env:FIKA_REF_BASE/Newtonsoft.Json.dll" (Join-Path $managedDir 'Newtonsoft.Json.dll')
+          Get-Ref "$env:FIKA_REF_BASE/Sirenix.Serialization.dll" (Join-Path $managedDir 'Sirenix.Serialization.dll')
+          Get-Ref "$env:FIKA_REF_BASE/Unity.Postprocessing.Runtime.dll" (Join-Path $managedDir 'Unity.Postprocessing.Runtime.dll')
+
+          Get-Ref "$env:FIKA_REF_BASE/spt-common.dll" (Join-Path $sptPluginDir 'spt-common.dll')
+          Get-Ref "$env:FIKA_REF_BASE/spt-core.dll" (Join-Path $sptPluginDir 'spt-core.dll')
+          Get-Ref "$env:FIKA_REF_BASE/spt-reflection.dll" (Join-Path $sptPluginDir 'spt-reflection.dll')
+
+          Get-Ref $env:BIGBRAIN_DLL_URL (Join-Path $bepInExPluginsDir 'DrakiaXYZ-BigBrain.dll')
+
+      - name: Download Unity reference assemblies
+        shell: pwsh
+        run: |
+          $packageRoot = Join-Path $env:RUNNER_TEMP 'nuget'
+          $managedDir = Join-Path $env:SPT_ROOT 'EscapeFromTarkov_Data\Managed'
+
+          nuget install UnityEngine.Modules -Version 2022.3.43 -ExcludeVersion -OutputDirectory $packageRoot
+
+          Get-ChildItem -Path (Join-Path $packageRoot 'UnityEngine.Modules') -Recurse -Filter 'UnityEngine*.dll' |
+            Copy-Item -Destination $managedDir -Force
+
+      - name: Restore dependencies
+        run: dotnet restore Orbit/Orbit.csproj
+
+      - name: Build
+        run: dotnet build Orbit/Orbit.csproj --configuration Release --no-restore "/p:SptRoot=${{ env.SPT_ROOT }}"
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Application_Artifact
+          path: build/
