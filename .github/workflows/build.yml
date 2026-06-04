@@ -25,7 +25,7 @@ jobs:
     # - name: Compress result
     #  run: zip -r ../ORBIT-{{ env.build_ver }}-rc.zip ./build/*
     - name: Upload Build Artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v7
       with:
         name: Application_Artifact
         path: build/
